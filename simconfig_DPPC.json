@@ -1,0 +1,11 @@
+{    
+    "basename"       : "BB",
+    "candidates"     : 2, 
+    "pipeline_cores" : 1, 
+    "md_executable"  : "gmx",  
+    "md_pre_exec"    : "gmx grompp -f BB.mdp -c BB.gro -o sys.tpr -p BB.top", 
+    "md_args"        : "mdrun -s sys.tpr -deffnm sys -c outcrd.gro", 
+    "an_executable"  : "/home/abanerjee/Desktop/entk_temp/radical.entk/Hybrid_Soft_and_Biological_Materials_Design_PACE/examples/gromacs_example/BB/BB-0/an.py" 
+}
+
+

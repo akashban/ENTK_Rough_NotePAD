@@ -1,0 +1,67 @@
+; For polarizable water minimization, do not forget to replace the
+; constraints by stiff bonds (force constant of 50000)
+
+; Polarizable water is stable with 30 fs timestep
+
+; RUN CONTROL PARAMETERS
+integrator               = md
+dt                       = 0.010
+nsteps                   = 10
+;define                   = -DPOSRES
+
+; OUTPUT CONTROL PARAMETERS
+nstxout                  = 20000000
+nstvout                  = 20000000
+nstfout                  = 0
+nstlog                   = 1000
+nstenergy                = 1000
+
+nstxtcout                = 200000
+compressed-x-precision   = 5000	
+
+
+; NEIGHBOR SEARCHING PARAMETERS
+cutoff-scheme     	 = Verlet
+nstlist                  = 10
+ns-type                  = grid
+pbc                      = xyz
+rlist                    = 1.4
+
+; Polarizable water may be used with standard Martini shift, but also with PME
+
+; ELECTROSTATICS PARAMETERS
+coulombtype              = Reaction-Field-Zero
+rcoulomb-switch		 = 0.0  
+rcoulomb                 = 1.2
+epsilon-rf		 = 0
+epsilon-r                = 2.5
+
+; VAN DER WAALS (VdW) PARAMETERS
+vdw-modifier             = Force-switch 
+rvdw-switch              = 0.9
+rvdw                     = 1.2
+DispCorr                 = No
+
+; TEMPERATURE COUPLING PARAMETERS
+tcoupl                   = v-rescale 
+tc-grps                  = DPPC W  DEN Cl
+tau-t                    = 1.0 1.0 1.0 1.0
+ref-t                    = 323 323 323 323
+
+; PRESSURE COUPLING PARAMETERS
+
+pcoupl                   = berendsen
+pcoupltype               = isotropic
+tau-p                    = 10.0
+compressibility          = 5e-6 
+ref-p                    = 1.01325
+;refcoord-scaling         = all
+
+
+
+; For polarizable water sometimes Lincs warnings appear for no apparent reason.
+; With a warnangle of 90 this is largely avoided.
+
+
+
+
