@@ -1,0 +1,194 @@
+#!/usr/bin/env python
+
+from radical.entk import Pipeline, Stage, Task, AppManager
+#from pace import 
+import os, sys, json
+
+
+# ------------------------------------------------------------------------------
+# Read stuff
+
+simconfig = sys.argv[1] # simulation configuration
+resconfig = sys.argv[2] # resource configuration
+
+with open(simconfig) as simconf:
+    simdata = json.load(simconf)
+
+with open(resconfig) as resconf:
+    resdata = json.load(resconf)
+
+basename       = simdata["basename"] #Base name of system, same as directory
+candidates     = simdata["candidates"]
+pipeline_cores = simdata["pipeline_cores"]
+md_executable  = simdata["md_executable"] #'/u/sciteam/mushnoor/amber/amber14/bin/sander.MPI' #/path/to/your/MD/Executable
+md_pre_exec    = simdata["md_pre_exec"]
+md_args        = simdata["md_args"].split()
+an_executable  = simdata["an_executable"]
+#an_args        = simdata["an_args"]
+#an_post_exec   = simdata["an_post_exec"]
+pilot_cores    = resdata["cpus"]
+
+
+
+# ------------------------------------------------------------------------------
+# Pre-run env vars
+if os.environ.get('RADICAL_ENTK_VERBOSE') == None:
+    os.environ['RADICAL_ENTK_REPORT']     = 'True'
+hostname                                  = os.environ.get('RMQ_HOSTNAME', 'localhost')
+port                                      = os.environ.get('RMQ_PORT', 32769)
+# ------------------------------------------------------------------------------
+
+
+def generate_pipeline(sysname, pipeline_cores, md_executable, md_pre_exec, md_args, an_executable): 
+    
+    #### Ideally, these should be methods of a "candidate" object
+    #### TO DO: SM: generate_pipeline should not be a function but 
+    #### be candidate.gen_pipeline(). So the Candidate() object is 
+    #### a functional analog of the Replica() object in RepEx
+    #### A PoolManager() Object can maintain ownership over a set 
+    #### of Candidate() objects and instantiate them. It may inherit
+    #### EnTK's appman(), or it may not. TBD
+
+    # First, define extension function:
+    def extend_pipeline():
+
+    	### This is the decision to either extend or terminate the pipeline.
+        
+       
+        filename = 'out_%s.txt' % sysname
+        file = open(filename, "r")
+        if file.read() == "1":
+            
+            print("Compliant candidate, extending pipeline")
+            md_stg2 = Stage()
+            md_stg2.name = sysname
+         
+            
+
+            # Create a Task object
+            md = Task()
+            md.name       = sysname
+            md.executable = md_executable
+            md.pre_exec   = [md_pre_exec]
+            md.arguments  = md_args #['mdrun', '-s', 'sys.tpr', '-deffnm', 'FF','-c', 'outcrd.gro'] #[md_args] 
+            md.link_input_data = ['$Pipline_%s_Stage_%s_Task_%s/%s.gro' % (p.name, md_stg.name, md.name,basename),
+                                  '$Pipline_%s_Stage_%s_Task_%s/%s.itp' % (p.name, md_stg.name, md.name, basename),
+                                  '$Pipline_%s_Stage_%s_Task_%s/alternative_1.mdp > BB.mdp' % (p.name, md_stg.name, md.name),
+                                  '$Pipline_%s_Stage_%s_Task_%s/%s.top' % (p.name, md_stg.name, md.name, basename),
+                                  '$Pipline_%s_Stage_%s_Task_%s/martini_v2.2.itp' % (p.name, md_stg.name, md.name)]
+                               
+                                     
+                                                        
+            # Download the output of the current task to the current location
+            #md.download_output_data = ['chksum.txt > chksum_%s.txt' % cnt]
+
+	        # Add the Task to the Stage
+            md_stg2.add_tasks(md)
+
+	        # Add Stage to the Pipeline
+            p.add_stages(md_stg2)
+        else:
+            print("Candidate is not promising, terminating pipeline")
+
+        #except:
+        #	print("This is the first stage")
+
+    # Create the candidate pipeline
+    p = Pipeline()
+    p.name = sysname
+
+
+    # Create a Stage object which holds the MD task
+    md_stg = Stage()
+    md_stg.name = sysname
+
+    # Create a Task object which holds the MD kernel
+    md            = Task()
+    md.name       = sysname # sysname = basename + cid(candidate id)
+    md.executable = md_executable
+    md.pre_exec   = [md_pre_exec]
+    md.arguments  = md_args  #['mdrun', '-s', 'sys.tpr', '-deffnm', 'FF','-c', 'outcrd.gro']#[md_args]
+    md.upload_input_data = [basename+"/"+sysname+"/"+basename+".gro",
+                            basename+"/"+sysname+"/"+basename+".itp",
+                            basename+"/"+sysname+"/"+basename+".mdp",
+                            basename+"/"+sysname+"/"+basename+".top",
+                            basename+"/"+sysname+"/"+"martini_v2.2.itp",
+                            basename+"/"+sysname+"/"+"file_transfer.py",
+                            basename+"/"+sysname+"/"+"alternative_1.mdp",
+                            basename+"/"+sysname+"/"+"alternative_2.mdp"]
+
+    md.post_exec = [ 'python' + ' ' + 'file_transfer.py' ]
+    
+    # Add the Task to the Stage
+    md_stg.add_tasks(md)
+
+    # Add Stage to the Pipeline
+    p.add_stages(md_stg)
+
+    # Create another Stage object to hold analysis tasks
+    an_stg = Stage()
+    an_stg.name = sysname+"-analysis"
+
+    # Create the analysis Task object
+    an                      = Task()
+    an.name                 = sysname+"-analysis"
+    an.executable           = 'python'   #an_executable
+    an.arguments            = [an_executable]#['outcrd.gro']
+    an.copy_input_data      = ['$Pipline_%s_Stage_%s_Task_%s/file.tar.gz' % (p.name, md_stg.name, md.name),]
+                                                                
+                                     
+              
+    
+    an.download_output_data = ['out.txt > out_%s.txt' % sysname]
+    
+    an_stg.add_tasks(an)
+    an_stg.post_exec        = extend_pipeline
+    p.add_stages(an_stg)
+
+    
+
+
+    return p
+
+
+if __name__ == '__main__':
+
+    try:
+        res_dict ={
+                    "resource"      : str(resdata["resource"]),
+                    "walltime"      : int(resdata["walltime"]),
+                    "cpus"          : pilot_cores,
+                    "gpus_per_node" : int(resdata["gpus_per_node"]),
+                    "access_schema" : str(resdata["access_schema"]),
+                    "queue"         : str(resdata["queue"]),
+                    "project"       : str(resdata["project"]),  
+                  }
+
+    except:
+
+        #print resdata["resource"]
+        res_dict ={
+                    "resource"      : str(resdata["resource"]),
+                    "walltime"      : int(resdata["walltime"]),
+                    "cpus"          : pilot_cores,
+ 
+                  }
+
+    pipelines = []
+
+    for cid in range(candidates):
+        sysname = basename + "-" + str(cid)
+        pipelines.append(generate_pipeline(sysname, pipeline_cores, md_executable, md_pre_exec, md_args, an_executable))
+
+    # Create Application Manager
+    appman = AppManager(hostname=hostname, port=port)
+
+    # Assign resource request description to the Application Manager
+    appman.resource_desc = res_dict
+
+    # Assign the workflow as a set or list of Pipelines to the Application Manager
+    # Note: The list order is not guaranteed to be preserved
+    appman.workflow = set(pipelines)
+
+    # Run the Application Manager
+    appman.run()
